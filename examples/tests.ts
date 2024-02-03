@@ -1,20 +1,21 @@
 
-import { UiElement, playwrightWrappers, invokeBrowser, gotoUrl, closeplaywrightWrappers } from "../test-automation-library/lib/playwrightWrappers";
+import { UiElement, playwright, invokeBrowser, gotoUrl, closeplaywright } from "../test-automation-wrappers/lib/playwright";
 import { createLogger } from "winston";
-import logger, { options } from "../test-automation-library/lib/logger";
-import testContext from '../test-automation-library/lib/testContext';
-import customAssert from '../test-automation-library/lib/assert';
-import * as fileUtils from '../test-automation-library/utils/file.utils'
+import logger, { options } from "../test-automation-wrappers/lib/logger";
+import testContext from '../test-automation-wrappers/lib/testContext';
+import customAssert from '../test-automation-wrappers/lib/assert';
+import * as fileUtils from '../test-automation-wrappers/utils/file.utils'
 
 // Tips :to run only one test  append '.only' after describe
 describe('A first sample Playwright test', () => {
-
     before(async function () {
-        playwrightWrappers.browser = await invokeBrowser('chrome', { headless: true });
-        playwrightWrappers.context = await playwrightWrappers.browser.newContext();
-        playwrightWrappers.page = await playwrightWrappers.context.newPage();
-        playwrightWrappers.context.setDefaultTimeout(100000);
+        playwright.browser = await invokeBrowser('chrome', { headless: false });
+    })
 
+    beforeEach(async function () {
+        playwright.context = await playwright.browser.newContext();
+        playwright.page = await playwright.context.newPage();
+        playwright.context.setDefaultTimeout(100000);
         testContext.assertsJson = JSON.parse("{}");
         testContext.assertsJson.soft = [];
         await fileUtils.ensureDir('test-results/log');
@@ -23,9 +24,15 @@ describe('A first sample Playwright test', () => {
 
     });
 
-    after(async function () {
-        closeplaywrightWrappers();
+
+    afterEach(async function () {
+        closeplaywright();
     });
+
+    after(async function () {
+        playwright.browser.close();
+    });
+
 
     it('Search Playwright documentation from Goggle', async () => {
         let searchBox = new UiElement('[name="q"]', { description: 'Searcg Box' });
