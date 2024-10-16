@@ -2,7 +2,6 @@ import { Page, APIRequestContext, BrowserContext, Browser, chromium, firefox, we
 import logger from "./logger";
 import { cssPath, xPath } from "playwright-dompath";
 
-
 abstract class UiActions {
 
     protected locator: string;
@@ -15,15 +14,15 @@ abstract class UiActions {
     protected tempLocator: Locator;
     protected tempLocators: Locator[];
     //description: string = "Object - ", isPopup: boolean = false, pageIndex: number = 0
-    constructor(locator: string, options?: { description?: string, isPopup?: boolean, pageIndex?: number }) {
 
+    constructor(locator: string, options?: { description?: string, isPopup?: boolean, pageIndex?: number }) {
         this.locator = locator;
         this.fullCss = this.locator;
         this.isPopupExist = options?.isPopup?.valueOf() !== undefined ? options?.isPopup?.valueOf() : false;
         this.pageIndex = options?.pageIndex?.valueOf() !== undefined ? options?.pageIndex?.valueOf() : 0;
         this.objectDescriptor = options?.description?.valueOf() !== undefined ? options?.description?.valueOf() : 'Object - ';
-
     }
+
     protected async getPage() {
         if (this.isPopupExist === true) {
             if (playwright.popup === undefined) {
@@ -32,12 +31,10 @@ abstract class UiActions {
                     playwright.page.waitForEvent('popup')
                 ]);
                 playwright.popup = newPopup;
-                this.page = playwright.popup;
-
             }
             this.page = playwright.popup;
         } else {
-            const pages = playwright.context.pages()
+            const pages = playwright.context.pages();
             this.page = pages[this.pageIndex];
         }
     }
@@ -52,6 +49,7 @@ abstract class UiActions {
         if (options?.description?.valueOf() !== undefined) this.objectDescriptor = options?.description;
         return this;
     }
+
     async clickToOpenPopup(options?: { force?: boolean }) {
         let _force = options?.force?.valueOf() !== undefined ? options?.force : false;
         const [newPopup] = await Promise.all([
@@ -64,20 +62,24 @@ abstract class UiActions {
     protected async getElements(options?: { index?: number }) {
         return await this.waitTillElementToBeReady().then(async () => {
             if (options?.index?.valueOf() === undefined) {
-                return await this.page.$$(await this.getLocator());
+                let ele = this.page.locator(await this.getLocator());
+                return ele;
             }
-            let ele = await this.page.$$(await this.getLocator());
+            let ele = this.page.locator(await this.getLocator()).all();
             return ele[options?.index];
         })
     }
+
     protected async getElement() {
         return await this.waitTillElementToBeReady().then(async () => {
             return this.page.locator(await this.getLocator());
+
         })
     }
+
     protected async setCssAndXPath(element: Locator) {
-        this.fullCss = await (await cssPath(element)).toString();
-        this.fullXpath = await (await xPath(element)).toString();
+        this.fullCss = (await cssPath(element)).toString();
+        this.fullXpath = (await xPath(element)).toString();
     }
 
     async clickLink(linkName: string, options?: { linkNameExactMatch?: boolean, force?: boolean }) {
@@ -93,7 +95,7 @@ abstract class UiActions {
                 }).click({ force: _force });
                 await this.clearFullCssAndXPath();
 
-                await logger.info(`clicked on the Link with name - ${linkName} with excat match - ${_linkNameExactMatch} on ${this.objectDescriptor} `);
+                await logger.info(`clicked on the Link with name - ${linkName} with exact match - ${_linkNameExactMatch} on ${this.objectDescriptor} `);
             }
         })
 
@@ -118,19 +120,35 @@ abstract class UiActions {
     }
 
     async getSibling(locator: string, nthElement = 0) {
-        let ele = await (await this.getElement()).locator('xpath=..').locator(locator).nth(nthElement);
+        let ele = (await this.getElement()).locator('xpath=..').locator(locator).nth(nthElement);
         await this.setCssAndXPath(ele);
         return this;
     }
 
+    async getNextSibling(tagName: string) {
+        let ele = (await this.getElement());
+        await this.setCssAndXPath(ele);
+        ele = this.page.locator(this.fullCss + "+" + tagName);
+        await this.setCssAndXPath(ele);
+        return this;
+    }
+    async getNextNthSibling(tagName: string, next: number = 0) {
+        let ele = (await this.getElement());
+        await this.setCssAndXPath(ele);
+        for (let index = 0; index <= next; index++) {
+            ele = this.page.locator(this.fullCss + "+" + tagName);
+            await this.setCssAndXPath(ele);
+        }
+        return this;
+    }
     async getParent() {
-        let ele = await (await this.getElement()).locator('..');
+        let ele = (await this.getElement()).locator('..');
         await this.setCssAndXPath(ele);
         return this;
     }
 
     async getNth(index: number) {
-        let ele = await (await this.getElement()).nth(index);
+        let ele = (await this.getElement()).nth(index);
         await this.setCssAndXPath(ele);
         return this;
     }
@@ -157,19 +175,35 @@ abstract class UiActions {
 
     }
 
+    //Value of Input  / TextArea fields
+    async getValue(options?: { index: number }) {
+        let _index = options?.index?.valueOf() !== undefined ? options?.index : 0;
+        await (await this.getElement()).focus()
+        let prpVal = await ((await this.getElement()).nth(_index).inputValue());
+        await this.clearFullCssAndXPath();
+        return prpVal ?? '';
+
+    }
+
     async getPropertyValue(property: string, options?: { index: number }) {
         let _index = options?.index?.valueOf() !== undefined ? options?.index : 0;
         await (await this.getElement()).focus()
         let prpVal = await ((await this.getElement()).nth(_index).getAttribute(property));
         await this.clearFullCssAndXPath();
-        return prpVal === null ? '' : prpVal;
+        return prpVal ?? '';
 
     }
 
     async contains(containsText: string, options?: { index?: number, locator?: string }) {
         let _index = options?.index?.valueOf() !== undefined ? options?.index : 0;
-        let ele = await (await this.getElement()).filter({ hasText: `${containsText}` }).nth(_index);
-        await this.setCssAndXPath(ele);
+
+        if (options?.locator?.valueOf() !== undefined) {
+            let ele = await (await this.getElement()).locator(options.locator).filter({ hasText: `${containsText}` }).nth(_index);
+            await this.setCssAndXPath(ele);
+        } else {
+            let ele = (await this.getElement()).filter({ hasText: `${containsText}` }).nth(_index);
+            await this.setCssAndXPath(ele);
+        }
         return this;
 
     }
@@ -194,27 +228,24 @@ abstract class UiActions {
         let _index = options?.index?.valueOf() !== undefined ? options?.index : 0;
 
         await (await this.getElement()).filter({ hasText: `${containsText}` }).nth(_index).click({ force: _force })
-        await explicitWait(100);
-        await logger.info(`  clicked on the ${this.objectDescriptor} constains the text [${containsText}]`);
+        await staticWait(100);
+        await logger.info(`  clicked on the ${this.objectDescriptor} contains the text : [${containsText}]`);
         await this.clearFullCssAndXPath();
 
     }
 
     async waitTillElementToBeReady() {
         await this.getPage();
-        await this.page.waitForTimeout(10);
+        await this.page.waitForTimeout(100);
         await this.page.waitForLoadState();
         await this.page.waitForLoadState('domcontentloaded');
-        await this.page.waitForLoadState('networkidle');
-        await this.waitForDomComplete(this.page);
-        // await this.page.waitForSelector(await this.getLocator()); 
     }
 
     async getText(index = -1) {
         let _index = index === -1 ? 0 : index;
         let text = await (await this.getElement()).nth(_index).innerText();
         await this.clearFullCssAndXPath();
-        await logger.info(`getting text from ${this.objectDescriptor}`);
+        await logger.info(`getting text from the locator : "${this.objectDescriptor}"`);
         return text;
     }
 
@@ -224,7 +255,7 @@ abstract class UiActions {
 
     async getPageTitle() {
         await this.getPage();
-        let title = this.page.title().toString();
+        let title = (await this.page.title()).toString();
         await this.clearFullCssAndXPath();
         return title;
     }
@@ -234,14 +265,27 @@ abstract class UiActions {
         await this.page.waitForTimeout(10);
         await this.page.waitForLoadState();
         await this.page.waitForLoadState('domcontentloaded');
-        await this.page.waitForLoadState('networkidle');
-        return await this.page.$(await this.getLocator()) == null ? false : true;
+        let flag = (await this.page.locator(await this.getLocator()).all()).length > 0;
+        await this.clearFullCssAndXPath();
+        return flag;
     }
 
     async isEnabled() {
         let enabled = (await this.getElement()).isEnabled();
         await this.clearFullCssAndXPath();
         return enabled;
+    }
+
+    async isDisabled() {
+        let disabled = (await this.getElement()).isDisabled();
+        await this.clearFullCssAndXPath();
+        return disabled;
+    }
+
+    async isChecked() {
+        let checked = (await this.getElement()).isChecked();
+        await this.clearFullCssAndXPath();
+        return checked;
     }
 
     async isVisible() {
@@ -251,17 +295,28 @@ abstract class UiActions {
     }
 
     async scrollIntoView(options: string = 'End') {
+        await this.waitTillElementToBeReady();
         await this.page.keyboard.down(options);
     }
+
+    async scrollToBottomOfPage(count: number = 4) {
+        await this.getPage();
+        const screenHeight = await this.page.evaluate(() => document.body.scrollHeight); // get the page height
+        for (let index = 0; index < count; index++) {
+            await this.page.mouse.wheel(0, screenHeight);
+            await staticWait(1000);
+        }
+    }
+
     async childHasText(text: string, options?: { exactMatch?: boolean }) {
         await this.waitTillElementToBeReady();
         let _exactMatch = options?.exactMatch?.valueOf() !== undefined ? options?.exactMatch : false;
         if (_exactMatch) {
-            let ele = await this.page.locator(await this.getLocator(), { has: this.page.locator(`text="${text}"`).nth(0) }).nth(0);
+            let ele = this.page.locator(await this.getLocator(), { has: this.page.locator(`text="${text}"`).nth(0) }).nth(0);
             await this.setCssAndXPath(ele);
             return this;
         } else {
-            let ele = await this.page.locator(`${await this.getLocator()}:has-text("${text}")`).nth(0);
+            let ele = this.page.locator(`${await this.getLocator()}:has-text("${text}")`).nth(0);
             await this.setCssAndXPath(ele);
             return this;
         }
@@ -271,9 +326,10 @@ abstract class UiActions {
         return await this.getPage().then(async () => {
             let locatorE = (await this.getElement());
             let jsonVals = await locatorE.evaluate((element: any) => {
-                let json = JSON.parse('{}')
-                let cssObj = window.getComputedStyle(element)
-                for (var i = 0; i < cssObj.length; i++) {
+                console.log("getting css.....")
+                let json = JSON.parse('{}');
+                let cssObj = window.getComputedStyle(element);
+                for (let i = 0; i < cssObj.length; i++) {
                     json[cssObj[i]] = cssObj.getPropertyValue(cssObj[i]);
                 }
                 return json;
@@ -292,7 +348,6 @@ abstract class UiActions {
         return this.fullCss === this.locator ? this.locator : this.fullCss;
     }
 
-
     async getLocatorFullCss() {
         return this.fullCss;
     }
@@ -306,20 +361,19 @@ abstract class UiActions {
         let _objIndex = options?.nthObj?.valueOf() !== undefined ? options?.nthObj : 0;
 
         if (options?.hasText?.valueOf() === undefined) {
-            let ele = await this.page.locator(`${await this.getLocator()} ${locator}`).nth(_index);
+            let ele = this.page.locator(`${await this.getLocator()} ${locator}`).nth(_index);
             await this.setCssAndXPath(ele);
         } else {
-            let ele = await (await this.getElement()).locator(locator, { hasText: `${options.hasText}` }).nth(_index);
+            let ele = (await this.getElement()).locator(locator, { hasText: `${options.hasText}` }).nth(_index);
             await this.setCssAndXPath(ele);
         }
 
         if (options?.nthObj?.valueOf() !== undefined) {
             let ele = (await this.getElement()).nth(_objIndex);
-            await this.setCssAndXPath(this.tempLocator);
+            await this.setCssAndXPath(ele);
         }
         return this;
     }
-
 
     async setDescription(desc: string) {
         this.objectDescriptor = desc;
@@ -330,7 +384,7 @@ abstract class UiActions {
         let arr = [];
         let count = await (await this.getElement()).count();
         for (let indx = 0; indx < count; indx++) {
-            await explicitWait(100);
+            await staticWait(100);
             let iText = (await (await this.getElement()).nth(indx).innerText()).toString()
             arr.push(iText.trim())
         }
@@ -339,9 +393,9 @@ abstract class UiActions {
     }
 
     async clear(option?: { force?: boolean }) {
-        let _force = option?.force?.valueOf() === undefined ? false : true;
+        let _force = option?.force?.valueOf() !== undefined;
 
-        let ele = await (await this.getElement());
+        let ele = (await this.getElement());
         await this.setCssAndXPath(ele);
         await ele.clear({ force: _force });
         return this;
@@ -350,7 +404,7 @@ abstract class UiActions {
     async click(options?: { objIndex?: number, force?: boolean }) {
         let _objIndex = options?.objIndex?.valueOf() === undefined ? 0 : options?.objIndex;
         let _force = options?.force?.valueOf() !== undefined ? options?.force : false;
-        const obj = await (await this.getElement()).nth(_objIndex);
+        const obj = (await this.getElement()).nth(_objIndex);
         await obj.click({ force: _force });
         await logger.info(`clicked on the ${this.objectDescriptor} of [${_objIndex}]`);
         await this.clearFullCssAndXPath();
@@ -359,13 +413,13 @@ abstract class UiActions {
     async dblClick(options?: { objIndex?: number, force?: boolean }) {
         let _objIndex = options?.objIndex?.valueOf() === undefined ? 0 : options?.objIndex;
         let _force = options?.force?.valueOf() !== undefined ? options?.force : false;
-        const obj = await (await this.getElement()).nth(_objIndex);
+        const obj = (await this.getElement()).nth(_objIndex);
         await obj.dblclick({ force: _force });
         await logger.info(`dbl clicked on the ${this.objectDescriptor} of [${_objIndex}`);
         await this.clearFullCssAndXPath();
 
     }
-    protected async waitForDomComplete(page: Page, pollDelay = 10, stableDelay = 500) {
+    async waitForDomComplete(page: Page, pollDelay = 10, stableDelay = 500) {
         let markupPrevious = '';
         const timerStart = new Date();
         let isStable = false;
@@ -392,7 +446,26 @@ export class UiElement extends UiActions {
         super(locator, { description: options?.description, isPopup: options?.isPopup, pageIndex: options?.pageIndex });
     }
 
+    async getAllObjects(options?: { hasText?: string }): Promise<UiElement[]> {
+        if (options?.hasText === undefined) {
+            const arrayLocators = await (await this.getElement()).locator(':scope', { has: this.page.locator(this.locator) }).all();
+            arrayLocators.forEach((loc: Locator) => {
+                this.tempLocators.push(loc);
+            });
+        } else {
+            const arrayLocators = await (await this.getElement()).locator(this.locator, { hasText: `${options.hasText}` }).all();
+            arrayLocators.forEach((loc: Locator) => {
+                this.tempLocators.push(loc);
+            });
+        }
 
+        const uiElements: UiElement[] = await Promise.all(this.tempLocators.map(async (loc: any, index: number) => {
+            const cssLocator = (await cssPath(loc)).toString();
+            return new UiElement(cssLocator, { description: `${this.objectDescriptor} [${index}]` });
+        }));
+        return uiElements;
+    }
+    /*
     async getAllObjects(locator: string, options?: { hasText?: string }) {
 
         if (options?.hasText?.valueOf() === undefined) {
@@ -416,7 +489,7 @@ export class UiElement extends UiActions {
         })
         return uiElements;
     }
-
+*/
 
     async chooseFiles(files: string[]) {
         await this.waitTillElementToBeReady().then(async () => {
@@ -431,7 +504,7 @@ export class UiElement extends UiActions {
         let _force = options?.force?.valueOf() !== undefined ? options?.force : false;
 
         await this.waitTillElementToBeReady().then(async () => {
-            const obj = _objIndex > -1 ? await (await this.getElement()).nth(_objIndex) : await (await this.getElement()).first();
+            const obj = _objIndex > -1 ? (await this.getElement()).nth(_objIndex) : (await this.getElement()).first();
             let flag = await obj.getAttribute('disabled')
             if (!flag) {
                 await obj.check({ force: _force })
@@ -447,7 +520,7 @@ export class UiElement extends UiActions {
         let _objIndex = options?.objIndex?.valueOf() !== undefined ? -1 : options?.objIndex;
         let _force = options?.force?.valueOf() !== undefined ? options?.force : false;
 
-        const obj = _objIndex > -1 ? await (await this.getElement()).nth(_objIndex) : await (await this.getElement()).first();
+        const obj = _objIndex > -1 ? (await this.getElement()).nth(_objIndex) : (await this.getElement()).first();
         let flag = await obj.getAttribute('disabled')
         if (!flag) {
             await obj.uncheck({ force: _force })
@@ -457,69 +530,59 @@ export class UiElement extends UiActions {
         }
         await this.clearFullCssAndXPath();
     }
+
     /*
-       
-        Allowed Keys : F1 - F12, Digit0- Digit9, KeyA- KeyZ, Backquote, Minus, Equal, Backslash, Backspace, Tab, Delete, Escape, ArrowDown, End, Enter, Home, Insert, PageDown, PageUp, ArrowRight, ArrowUp, etc.
-       
+        Allowed Keys : F1 - F12, Digit0- Digit9, KeyA- KeyZ, Backquote, Minus, Equal, Backslash, Backspace, Tab, Delete, Escape, ArrowDown, End, Enter, Home, Insert, PageDown, PageUp, ArrowRight, ArrowUp, etc.     
     */
     async setValue(inputString: any, options?: { keyPress?: string, force?: boolean }) {
         let _force = options?.force?.valueOf() !== undefined ? options?.force : false;
-
         await (await this.getElement()).clear();
-        await (await this.getElement()).fill(inputString.toString(), { force: _force })
+        await (await this.getElement()).fill(inputString.toString(), { force: _force });
         if (options?.keyPress?.valueOf() !== undefined) {
             await (await this.getElement()).press(options?.keyPress);
         }
         await logger.info(`${this.objectDescriptor} - Set the value -  ${this.objectDescriptor.toLowerCase().includes('password') ? '*******' : inputString}`);
         await this.clearFullCssAndXPath();
-
     }
+
+
+
     /*
-    
         Allowed Keys : F1 - F12, Digit0- Digit9, KeyA- KeyZ, Backquote, Minus, Equal, Backslash, Backspace, Tab, Delete, Escape, ArrowDown, End, Enter, Home, Insert, PageDown, PageUp, ArrowRight, ArrowUp, etc.
     
     */
-
-    async type(inputString: any, options?: { delay?: number, keyPress?: string }) {
+    async type(inputString: string, options?: { delay?: number, keyPress?: string, clearAndType?: boolean }) {
         let _delay = options?.delay?.valueOf() !== undefined ? 0 : options?.delay;
-
-        await (await this.getElement()).type(inputString.toString(), { delay: _delay })
+        let _clearAndType = options?.clearAndType?.valueOf() !== undefined ? false : options?.clearAndType;
+        if (_clearAndType) { (await this.getElement()).clear({ force: true }); }
+        await (await this.getElement()).type(inputString, { delay: _delay });
         if (options?.keyPress?.valueOf() !== undefined) {
             await (await this.getElement()).press(options?.keyPress);
         }
         await logger.info(`${this.objectDescriptor} - Type the value -  ${this.objectDescriptor.toLowerCase().includes('password') ? '*******' : inputString}`);
         await this.clearFullCssAndXPath();
-
-
     }
 
     async pressSequentially(inputString: any, options?: { delay?: number, keyPress?: string }) {
         let _delay = options?.delay?.valueOf() !== undefined ? 0 : options?.delay;
-
         await (await this.getElement()).pressSequentially(inputString, { delay: _delay });
-
         if (options?.keyPress?.valueOf() !== undefined) {
             await (await this.getElement()).press(options?.keyPress);
         }
         await logger.info(`${this.objectDescriptor} - pressSequentially the value -  ${this.objectDescriptor.toLowerCase().includes('password') ? '*******' : inputString}`);
         await this.clearFullCssAndXPath();
-
-
     }
 
     async selectListOptionByText(option: string) {
-
         await (await this.getElement()).selectOption(option)
         await logger.info(`${this.objectDescriptor} - Selecting the option : ` + option)
         await this.clearFullCssAndXPath();
     }
 
     async selectListOptionByIndex(indexOf: number) {
-
         await (await this.getElement()).selectOption({ index: indexOf })
         await logger.info(`${this.objectDescriptor} - Selecting the option index : ` + indexOf)
         await this.clearFullCssAndXPath();
-
     }
 
     async getListOptions() {
@@ -527,25 +590,55 @@ export class UiElement extends UiActions {
         await this.clearFullCssAndXPath();
         return innerTexts;
     }
+    async getSelectedListValue(): Promise<string> {
+        const selectedOption = await (await this.getElement()).locator(await this.getLocator() + '[aria-selected="true"]').first();
+        const value = await selectedOption.innerText();
+        await this.clearFullCssAndXPath();
+        return value;
+    }
 }
 
 export class UiTable extends UiActions {
     constructor(locator: string, options?: { description?: string, isPopup?: boolean, pageIndex?: number }) {
         super(locator, { description: options?.description, isPopup: options?.isPopup, pageIndex: options?.pageIndex });
     }
+
+    async getUiElement() {
+        let ele = await new UiElement('xpath=' + (await this.getLocatorFullXpath()));
+        this.clearFullCssAndXPath();
+        return ele;
+    }
+
     async getColumnHasText(cellvalue: string) {
-        let ele = await (await this.getElement()).locator('td').filter({ hasText: `${cellvalue} ` });
+        let ele = (await this.getElement()).locator('td').filter({ hasText: `${cellvalue} ` });
         await this.setCssAndXPath(ele);
         return this;
     }
 
     async waitForRowsToLoad(options?: { locator?: string }) {
         let _locator = options?.locator?.valueOf() === undefined ? 'tr' : options?.locator;
-        await this.page.waitForSelector(await this.getLocator() + ` ${_locator}`);
         await (await this.getElement()).locator(_locator).nth(0).waitFor({ state: "attached", timeout: 60000 });
         return this;
     }
 
+    async waitForHomeTabsToLoad(options?: { locator?: string }) {
+        let _locator = options?.locator?.valueOf() === undefined ? 'ecp-ucl-skeleton-loader' : options?.locator;
+        await (await this.getElement()).locator(_locator).nth(0).waitFor({ state: "hidden", timeout: 60000 });
+        return this;
+    }
+
+    /**
+     * The function `getCellData` retrieves the data from a specific cell in a table based on the given
+     * row and column indices.
+     * @param {number} row - The `row` parameter is the index of the row from which you want to
+     * retrieve the cell data. It is a number that represents the position of the row in a table or
+     * grid.
+     * @param {number} col - The `col` parameter in the `getCellData` function represents the column
+     * number of the cell from which you want to retrieve data.
+     * @param [options] - The `options` parameter is an optional object that can contain the following
+     * properties:
+     * @returns the cell data as a string.
+     */
     async getCellData(row: number, col: number, options?: { locator?: string }) {
         let _locator = options?.locator?.valueOf() === undefined ? 'tr' : options?.locator;
         await logger.info(`getting cell data from ${this.objectDescriptor} - Row,Column [${row},${col}]`);
@@ -555,6 +648,15 @@ export class UiTable extends UiActions {
         return val.toString();
     }
 
+    /**
+     * The function `getRowData` retrieves the inner texts of all elements in a specified row of a
+     * table.
+     * @param {number} row - The `row` parameter is the index of the row you want to retrieve data
+     * from. It is a number that represents the position of the row in a table or list.
+     * @param [options] - The `options` parameter is an optional object that can contain the following
+     * properties:
+     * @returns an array of inner texts of elements in a row.
+     */
     async getRowData(row: number, options?: { locator?: string }) {
         let _locator = options?.locator?.valueOf() === undefined ? 'tr' : options?.locator;
         let arr = await (await this.getElement()).locator(_locator).nth(row).allInnerTexts();
@@ -562,6 +664,16 @@ export class UiTable extends UiActions {
         return arr;
     }
 
+    /**
+     * The function `getAllRowsColumnData` retrieves the data from a specific column in a table, with
+     * an optional locator parameter to specify the table rows.
+     * @param {number} column - The `column` parameter is the index of the column you want to retrieve
+     * data from. It is a number that represents the position of the column in the table, starting from
+     * 0 for the first column.
+     * @param [options] - The `options` parameter is an optional object that can contain the following
+     * properties:
+     * @returns an array of data from a specific column in a table.
+     */
     async getAllRowsColumnData(column: number, options?: { locator?: string }) {
         let _locator = options?.locator?.valueOf() === undefined ? 'tr' : options?.locator;
 
@@ -575,30 +687,81 @@ export class UiTable extends UiActions {
 
     }
 
+    /**
+     * The function retrieves the inner texts of all th elements within a specified element and returns
+     * them as an array.
+     * @returns an array of header names.
+     */
     async getHeaderNames() {
         let arr = await (await this.getElement()).locator('th').allInnerTexts();
         await this.clearFullCssAndXPath();
         return arr;
     }
 
+    /**
+     * The function tbody() asynchronously locates the tbody element, sets its CSS and XPath, and
+     * returns the coding assistant.
+     * @returns This `async tbody()` function is returning the current object (`this`) after setting
+     * the CSS and XPath properties of the `tbody` element obtained from the `getElement()` function.
+     */
+    async tbody() {
+        let ele = (await this.getElement()).locator('tbody');
+        await this.setCssAndXPath(ele);
+        return this;
+    }
 
+    /**
+     * The above function is an asynchronous method in TypeScript that locates the 'thead' element,
+     * sets its CSS and XPath properties, and returns the updated element.
+     * @returns The `thead` element is being returned after setting its CSS and XPath properties.
+     */
+    async thead() {
+        let ele = (await this.getElement()).locator('thead');
+        await this.setCssAndXPath(ele);
+        return this;
+    }
+    /**
+     * The function `getRow` retrieves a specific row element from a table based on the given index and
+     * optional locator.
+     * @param {number} index - The index parameter is a number that represents the position of the row
+     * you want to retrieve. It is used to specify which row to select from a table or list of rows.
+     * @param [options] - The `options` parameter is an optional object that can contain the following
+     * properties:
+     * @returns a Promise that resolves to the current instance of the object.
+     */
     async getRow(index: number, options?: { locator?: string }) {
         let _locator = options?.locator?.valueOf() === undefined ? 'tr' : options?.locator;
         return await this.waitTillElementToBeReady().then(async () => {
-            let ele = await (await this.getElement()).locator(_locator).nth(index);
+            let ele = (await this.getElement()).locator(_locator).nth(index);
             await this.setCssAndXPath(ele);
             return this;
         })
     }
 
+    /**
+     * The function `getTable` retrieves a table element from the page and sets its CSS and XPath
+     * properties.
+     * @param [index=0] - The index parameter is used to specify the index of the element to be
+     * retrieved from the list of elements. It is an optional parameter with a default value of 0.
+     * @returns the current instance of the object.
+     */
     async getTable(index = 0) {
-
-        let ele = await (await this.getElement()).nth(index);
+        let ele = (await this.getElement()).nth(index);
         await this.setCssAndXPath(ele);
         return this;
-
     }
 
+    /**
+     * The function `getHederColumnNumber` returns the index of a column header in a table based on its
+     * name, with an option for exact or case-insensitive matching.
+     * @param {string} colName - The `colName` parameter is a string that represents the name of the
+     * column you want to find the number of.
+     * @param [exactMatch=false] - The `exactMatch` parameter is a boolean value that determines
+     * whether the column name should be matched exactly or not. If `exactMatch` is set to `true`, the
+     * column name must match exactly (including case sensitivity). If `exactMatch` is set to `false`
+     * (or not provided
+     * @returns the index of the column header with the specified name.
+     */
     async getHederColumnNumber(colName: string, exactMatch = false) {
         const innerTextArr = await (await this.getElement()).locator('th').allInnerTexts();
         await this.clearFullCssAndXPath();
@@ -608,12 +771,24 @@ export class UiTable extends UiActions {
         return innerTextArr.findIndex((ele: string) => ele.trim().toLowerCase() === colName.trim().toLowerCase());
     }
 
+    /**
+     * The function `getHeaderName` retrieves the text of a table header element at a specified index.
+     * @param {number} index - The `index` parameter is a number that represents the position of the
+     * table header element in the table. It is used to specify which table header element to retrieve
+     * the name from.
+     * @returns the text of the header name at the specified index.
+     */
     async getHeaderName(index: number) {
         let text = await (await this.getElement()).locator('th').nth(index).innerText();
         await this.clearFullCssAndXPath();
         return text;
     }
 
+    /**
+     * The function `getHeaderColumnLength` returns the number of header columns in a table after
+     * waiting for the element to be ready.
+     * @returns the length of the header column.
+     */
     async getHeaderColumnLength() {
         return await this.waitTillElementToBeReady().then(async () => {
             let headerCount = Number(await (await this.getElement()).locator('th').count());
@@ -622,17 +797,32 @@ export class UiTable extends UiActions {
         })
     }
 
+    /**
+     * The function returns the number of rows in a table, using a specified locator or the default
+     * locator if none is provided.
+     * @param [options] - An optional object that can contain the following property:
+     * @returns the length of rows in a table.
+     */
     async getRowsLength(options?: { locator?: string }) {
         let _locator = options?.locator?.valueOf() === undefined ? 'tr' : options?.locator;
-        let length = await this.isExist() ? Number(await (await this.getElement()).locator(_locator).count()) : 0;
-        await this.clearFullCssAndXPath();
-        return length;
+        return await this.waitTillElementToBeReady().then(async () => {
+            this.fullCss = (await this.getLocator()).toString() + ' ' + _locator;
+            let count = await this.isExist() ? Number(await (await this.getElement()).locator(_locator).count()) : 0;
+            await this.clearFullCssAndXPath();
+            await logger.info(`Number of rows in the table = ${count}`);
+            return count;
+        })
     }
 
+    /**
+     * The function `getMetaTableRowsLength` returns the number of rows in a table element.
+     * @param [options] - An optional object that can contain the following properties:
+     * @returns the length of the table rows that match the specified locator.
+     */
     async getMetaTableRowsLength(options?: { locator?: string }) {
         let _locator = options?.locator?.valueOf() === undefined ? 'tr' : options?.locator;
         return await this.waitTillElementToBeReady().then(async () => {
-            this.fullCss = await (await this.getLocator()).toString() + ' tr';
+            this.fullCss = (await this.getLocator()).toString() + ' tr';
             let length = await this.isExist() ? Number(await (await this.getElement()).locator(_locator).count()) : 0;
             await this.clearFullCssAndXPath();
             return length;
@@ -642,7 +832,7 @@ export class UiTable extends UiActions {
 
     async getColumnLength(rowIndex?: number, options?: { locator?: string }) {
         let _locator = options?.locator?.valueOf() === undefined ? 'tr' : options?.locator;
-        let rowI = rowIndex === undefined ? 0 : rowIndex;
+        let rowI = rowIndex ?? 0;
         let length = Number(await (await this.getElement()).locator(_locator).nth(rowI).locator('td').count());
         await this.clearFullCssAndXPath();
         return length;
@@ -650,11 +840,22 @@ export class UiTable extends UiActions {
 
     async getRowColumn(rowIndex: number, columnIndex: number, options?: { locator?: string }) {
         let _locator = options?.locator?.valueOf() === undefined ? 'tr' : options?.locator;
-        let rowColumn = await (await this.getElement()).locator(_locator).nth(rowIndex).locator('td').nth(columnIndex);
+        let rowColumn = (await this.getElement()).locator(_locator).nth(rowIndex).locator('td').nth(columnIndex);
         await this.setCssAndXPath(rowColumn);
         return this;
     }
 
+    /**
+     * The `getMatchedRowIndex` function is an asynchronous function that takes an array of row values
+     * and an optional options object as parameters, and returns the index of the first row that
+     * matches the given values in a table.
+     * @param {string[]} rowValues - An array of string values representing the values to match in each
+     * row of a table.
+     * @param [options] - The `options` parameter is an optional object that can contain the following
+     * properties:
+     * @returns a Promise that resolves to the index of the matched row in the table. If a match is
+     * found, it returns the index of the row. If no match is found, it returns -1.
+     */
     async getMatchedRowIndex(rowValues: string[], options?: { locator?: string, exactMatch?: boolean }) {
         let _locator = options?.locator?.valueOf() === undefined ? 'tr' : options?.locator;
         let _exactMatch = options?.exactMatch?.valueOf() === undefined ? false : options?.exactMatch;
@@ -669,6 +870,7 @@ export class UiTable extends UiActions {
             for (let index = 0; index < rows; index++) {
                 const table_data = await ((await this.getElement()).locator(_locator).nth(index).allInnerTexts());
                 let rowdata = table_data.toString().split('\t').join('').split('\n');
+                await logger.info(`Actual Row data = ${rowdata}`);
                 if (rowdata.length > 1) {
                     arr.push(rowdata);
                 }
@@ -678,9 +880,7 @@ export class UiTable extends UiActions {
                     if (_exactMatch) {
                         if (row_text.findIndex((ele: any) => ele.trim().toLowerCase() === col_data.toLowerCase().trim()) < 0) return false;
                     }
-                    else {
-                        if (row_text.findIndex((ele: any) => ele.trim().toLowerCase().includes(col_data.toLowerCase().trim())) < 0) return false;
-                    }
+                    else if (row_text.findIndex((ele: any) => ele.trim().toLowerCase().includes(col_data.toLowerCase().trim())) < 0) return false;
                 }
                 return true;
             });
@@ -692,6 +892,16 @@ export class UiTable extends UiActions {
         })
     }
 
+    /**
+     * The function `getMatchedRowIndices` is an asynchronous function that takes an array of row
+     * values and an optional options object as parameters, and returns an array of indices of rows
+     * that match the given values.
+     * @param {string[]} rowValues - An array of string values representing the values to match in each
+     * row.
+     * @param [options] - The `options` parameter is an optional object that can contain two
+     * properties:
+     * @returns an array of indices that match the specified row values.
+     */
     async getMatchedRowIndices(rowValues: string[], options?: { locator?: string, exactMatch?: boolean }) {
         let _locator = options?.locator?.valueOf() === undefined ? 'tr' : options?.locator;
         let _exactMatch = options?.exactMatch?.valueOf() === undefined ? false : options?.exactMatch;
@@ -710,9 +920,7 @@ export class UiTable extends UiActions {
                     if (_exactMatch) {
                         if (row_text_arr.findIndex(ele => ele.trim().toLowerCase() === col_data.toLowerCase().trim()) < 0) return false;
                     }
-                    else {
-                        if (row_text_arr.findIndex(ele => ele.trim().toLowerCase().includes(col_data.toLowerCase().trim())) < 0) return false;
-                    }
+                    else if (row_text_arr.findIndex(ele => ele.trim().toLowerCase().includes(col_data.toLowerCase().trim())) < 0) return false;
                 }
                 return true;
             }).then(flag => {
@@ -726,6 +934,16 @@ export class UiTable extends UiActions {
 
     }
 
+    /**
+     * The function `getMetaTableMatchedRowIndex` is an asynchronous function that searches for a row
+     * in a table based on the provided row values and returns the index of the matched row.
+     * @param {string[]} rowValues - An array of string values representing the values to match in each
+     * row of the table.
+     * @param [options] - The `options` parameter is an optional object that can contain the following
+     * properties:
+     * @returns the index of the matched row in the meta table. If a match is found, it returns the
+     * index of the row. If no match is found, it returns -1.
+     */
     async getMetaTableMatchedRowIndex(rowValues: string[], options?: { locator?: string, exactMatch?: boolean }) {
         let _locator = options?.locator?.valueOf() === undefined ? 'tr' : options?.locator;
         let _exactMatch = options?.exactMatch?.valueOf() === undefined ? false : options?.exactMatch;
@@ -748,9 +966,7 @@ export class UiTable extends UiActions {
                 if (_exactMatch) {
                     if (row_text.findIndex((ele: any) => ele.trim().toLowerCase() === col_data.toLowerCase().trim()) < 0) return false;
                 }
-                else {
-                    if (row_text.findIndex((ele: any) => ele.trim().toLowerCase().includes(col_data.toLowerCase().trim())) < 0) return false;
-                }
+                else if (row_text.findIndex((ele: any) => ele.trim().toLowerCase().includes(col_data.toLowerCase().trim())) < 0) return false;
             }
             return true;
         });
@@ -787,15 +1003,13 @@ export class UiTable extends UiActions {
                 arr.push(arrTds);
         }
 
-        for (let indx = 0; indx < arr.length; indx++) {
+        for (const element of arr) {
             let row_index = arr.findIndex((row_text: any) => {
                 for (const col_data of rowValues) {
                     if (_exactMatch) {
                         if (row_text.findIndex((ele: any) => ele.trim().toLowerCase() === col_data.toLowerCase().trim()) < 0) return false;
                     }
-                    else {
-                        if (row_text.findIndex((ele: any) => ele.trim().toLowerCase().includes(col_data.toLowerCase().trim())) < 0) return false;
-                    }
+                    else if (row_text.findIndex((ele: any) => ele.trim().toLowerCase().includes(col_data.toLowerCase().trim())) < 0) return false;
                 }
                 return true;
             })
@@ -813,8 +1027,9 @@ export class UiTable extends UiActions {
         let _linkName = options?.linkName?.valueOf() === undefined ? false : options?.linkName;
         let _lnkIndex = options?.lnkIndex?.valueOf() === undefined ? -1 : options?.lnkIndex;
 
-        const row = await (await this.getElement()).nth(rowIndex).locator(_locator).nth(0);
-        const link = _linkName !== '' ? row.filter({ hasText: `${_linkName}` }) : (_lnkIndex > -1 ? row.locator('a').nth(_lnkIndex - 1) : row.locator('a').first());
+        const row = (await this.getElement()).nth(rowIndex).locator(_locator).nth(0);
+        const temp = _lnkIndex > -1 ? row.locator('a').nth(_lnkIndex - 1) : row.locator('a').first();
+        const link = _linkName !== '' ? row.filter({ hasText: `${_linkName}` }) : temp;
         await link.click();
         await this.clearFullCssAndXPath();
     }
@@ -824,8 +1039,9 @@ export class UiTable extends UiActions {
         let _linkName = options?.linkName?.valueOf() === undefined ? false : options?.linkName;
         let _lnkIndex = options?.lnkIndex?.valueOf() === undefined ? -1 : options?.lnkIndex;
 
-        const row = await (await this.getElement()).locator(_locator).nth(rowIndex);
-        const link = _linkName !== '' ? await row.filter({ hasText: `${_linkName}` }) : (_lnkIndex > -1 ? await row.locator('a').nth(_lnkIndex - 1) : await row.locator('a').first());
+        const row = (await this.getElement()).locator(_locator).nth(rowIndex);
+        const temp = _lnkIndex > -1 ? row.locator('a').nth(_lnkIndex - 1) : row.locator('a').first();
+        const link = _linkName !== '' ? row.filter({ hasText: `${_linkName}` }) : temp;
         await link.click();
         await this.clearFullCssAndXPath();
 
@@ -837,12 +1053,10 @@ export class UiTable extends UiActions {
         return exist;
     }
 
-
-
     async clickRowLink(rowIndex: number, options?: { linkIndex?: number, force?: boolean, locator?: string }) {
         let _lIndex = options?.linkIndex?.valueOf() !== undefined ? options?.linkIndex?.valueOf() : 0;
         let _force = options?.force?.valueOf() !== undefined ? options?.force?.valueOf() : false;
-        const row = await this.page.locator(await this.getLocator() + ' tr').nth(rowIndex);
+        const row = this.page.locator(await this.getLocator() + ' tr').nth(rowIndex);
         await row.locator('a').nth(_lIndex).click({ force: _force });
         await this.clearFullCssAndXPath();
     }
@@ -850,8 +1064,12 @@ export class UiTable extends UiActions {
     async metaTableClickRowLink(rowIndex: number, options?: { locator?: string, lnkIndex?: number }) {
         let _locator = options?.locator?.valueOf() === undefined ? 'tr' : options?.locator;
         let _lnkIndex = options?.lnkIndex?.valueOf() === undefined ? -1 : options?.lnkIndex;
-        const row = await (await this.getElement()).nth(rowIndex).locator(_locator).nth(0);
-        await row.getByRole('link').nth(_lnkIndex).click();
+        const row = (await this.getElement()).nth(rowIndex).locator(_locator).nth(0);
+        if (await row.getByRole('link').nth(_lnkIndex).isEnabled()) {
+            await row.getByRole('link').nth(_lnkIndex).click();
+        } else {
+            await logger.error(_locator + ' text row is not enabled');
+        }
         await this.clearFullCssAndXPath();
     }
 
@@ -892,15 +1110,7 @@ export const invokeBrowser = async (browserType: string, options?: { headless?: 
 
 export async function waitForPageLoad() {
     await playwright.page.waitForLoadState('domcontentloaded');
-    await playwright.page.waitForLoadState('networkidle');
     await playwright.page.waitForLoadState();
-    return true;
-}
-
-export async function waitforPopupLoad() {
-    await playwright.popup.waitForLoadState('domcontentloaded');
-    await playwright.popup.waitForLoadState('networkidle');
-    await playwright.popup.waitForLoadState();
     return true;
 }
 
@@ -910,16 +1120,25 @@ export async function waitForUrl(url: string) {
     await playwright.page.waitForURL(url, { timeout: 120000, waitUntil: 'domcontentloaded' })
 }
 
-export async function explicitWait(timeOut: number, isPage: boolean = true) {
-    if (isPage) {
-        await playwright.page.waitForTimeout(timeOut);
-    } else
-        await playwright.popup.waitForTimeout(timeOut);
+export async function waitForSpinnerHidden() {
+    let _locator = '.spinner';
+    await playwright.page.locator(_locator).nth(0).waitFor({ state: "hidden", timeout: 60000 });
+}
 
+export async function staticWait(timeOut: number, isPage: boolean = true, waitForSpinner: boolean = true) {
+    if (isPage) {
+        await logger.info(`Waiting for the page : ${timeOut} milliseconds`);
+        if (waitForSpinner) { await waitForSpinnerHidden(); }
+        await playwright.page.waitForTimeout(timeOut);
+    } else {
+        await logger.info(`Waiting for the popup : ${timeOut} milliseconds`);
+        await playwright.popup.waitForTimeout(timeOut);
+    }
 }
 
 export async function gotoUrl(url: string) {
-    await playwright.page.goto(url, { timeout: 500000, waitUntil: 'networkidle' });
+    await playwright.page.route('**/*.{png,jpg,jpeg}', route => route.abort());
+    await playwright.page.goto(url, { timeout: 500000, waitUntil: 'domcontentloaded' });
     await logger.info('Launching URL : ' + url)
 }
 
@@ -933,9 +1152,9 @@ export async function closeplaywright() {
 }
 
 export async function getUrl(pageIndex: number = 0) {
-    const pages = playwright.context.pages()
+    const pages = playwright.context.pages();
     const page = pages[pageIndex];
-    await page.waitForLoadState();
+    await waitForPageLoad();
     return page.url().toString();
 }
 
@@ -956,11 +1175,19 @@ export async function refreshPage(options?: { isPage?: boolean }) {
         await playwright.popup.reload();
     }
 }
+
+export async function getApiResponse(url: string) {
+    const response = await playwright.page.waitForResponse((response) => response.url().includes(url));
+    return response;
+
+}
+
 /*
  
 F1 - F12, Digit0- Digit9, KeyA- KeyZ, Backquote, Minus, Equal, Backslash, Backspace, Tab, Delete, Escape, ArrowDown, End, Enter, Home, Insert, PageDown, PageUp, ArrowRight, ArrowUp, etc.
  
 */
+
 export async function keyboard(method: string, key: string, options?: { isPage?: boolean, pageIndex?: number }) {
     let _isPage = options?.isPage?.valueOf() === undefined ? true : options?.isPage;
     let _pageIndex = options?.pageIndex?.valueOf() === undefined ? 0 : options?.pageIndex;
@@ -976,7 +1203,7 @@ export async function keyboard(method: string, key: string, options?: { isPage?:
         }
         page = playwright.popup;
     } else {
-        const pages = playwright.context.pages()
+        const pages = playwright.context.pages();
         page = pages[_pageIndex];
     }
     await logger.info(`Keybaord method : ${method} - ${key}`);
@@ -993,7 +1220,7 @@ export async function keyboard(method: string, key: string, options?: { isPage?:
         case 'press':
             await page.keyboard.press(key);
             return;
-        case 'up':
+        case 'inserttext':
             await page.keyboard.insertText(key);
             return;
     }
